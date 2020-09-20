@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[8]:
 
 
 from qiskit import QuantumCircuit
@@ -12,7 +12,7 @@ from qiskit.circuit.library.standard_gates import CZGate
 from qiskit.quantum_info.operators import Operator
 
 
-# In[2]:
+# In[47]:
 
 
 def oneQubitDecomppser(Gate):
@@ -38,7 +38,7 @@ hgate=qc.data[0][0]
 oneQubitDecomppser(hgate).draw(output="mpl")
 
 
-# In[3]:
+# In[48]:
 
 
 def twoQubitDecomppser(Gate):
@@ -64,7 +64,7 @@ cxgate=qc.data[0][0]
 twoQubitDecomppser(cxgate).draw(output="mpl")
 
 
-# In[4]:
+# In[49]:
 
 
 def compiler(circuit):
@@ -125,12 +125,15 @@ qc=QuantumCircuit(5)
 qc.cx(0,1)
 qc.h(2)
 qc.cz(3,4)
+qc.cz(3,4)
+qc.cz(3,4)
+qc.cz(3,4)
 print(qc)
 newCircuit=compiler(qc)
 newCircuit.draw(output="mpl")
 
 
-# In[5]:
+# In[50]:
 
 
 #overhead
@@ -139,7 +142,7 @@ newCircuit.draw(output="mpl")
 #3.doublicate cz gates (remove each other)
 
 
-# In[6]:
+# In[51]:
 
 
 def removeZeroRotations(circuit):
@@ -147,10 +150,10 @@ def removeZeroRotations(circuit):
     Removes rotations with zero angles.
     
     Parameters:
-    circuit (QuantumCircuit): circuit before simplification
+    circuit (QuantumCircuit): circuit before simplification.
     
     Returns:
-    QuantumCircuit: A quantum circuit without gates with zero rotation
+    QuantumCircuit: A quantum circuit without gates with zero rotation.
     """
     n=len(circuit.data)
     i=0
@@ -166,4 +169,51 @@ def removeZeroRotations(circuit):
 #testing
 newCircuit=removeZeroRotations(newCircuit)
 newCircuit.draw(output="mpl")
+
+
+# In[52]:
+
+
+def removeDoubleCZ(circuit):
+    """
+    Removes pairs of cz at the same positions to optimize the circuit.
+    
+    Parameters:
+    circuit (QuantumCircuit): circuit before simplification.
+    
+    Returns:
+    QuantumCircuit: A quantum circuit after simplification.
+    """
+    wires=[[""] for i in range(circuit.num_qubits)]
+    n=len(circuit.data)
+    i=0
+    while i<n:
+        if circuit.data[i][0].name=="cz":
+            qubit1=circuit.data[i][1][0].index
+            qubit2=circuit.data[i][1][1].index
+            if wires[qubit1][-1][:2]=="cz" and wires[qubit2][-1][:2]=="cz":
+                circuit.data.pop(i)
+                circuit.data.pop(int(wires[qubit1][-1][2:]))
+                wires[qubit1].pop()
+                wires[qubit2].pop()
+                i=i-2
+                n=n-2
+            else:
+                wires[qubit1].append("cz"+str(i))
+                wires[qubit2].append("cz"+str(i))
+        else:
+            qubit=circuit.data[i][1][0].index
+            wires[qubit].append(circuit.data[i][0].name)
+        i=i+1
+    return circuit
+
+#testing
+newCircuit=removeDoubleCZ(newCircuit)
+newCircuit.draw(output="mpl")
+
+
+# In[ ]:
+
+
+
 
