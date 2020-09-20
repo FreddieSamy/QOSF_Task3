@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[8]:
+# In[1]:
 
 
 from qiskit import QuantumCircuit
@@ -10,9 +10,10 @@ from qiskit.quantum_info import OneQubitEulerDecomposer
 from qiskit.quantum_info import TwoQubitBasisDecomposer
 from qiskit.circuit.library.standard_gates import CZGate
 from qiskit.quantum_info.operators import Operator
+from math import pi as PI
 
 
-# In[47]:
+# In[2]:
 
 
 def oneQubitDecomppser(Gate):
@@ -32,13 +33,13 @@ def oneQubitDecomppser(Gate):
 
 #testing
 
-qc=QuantumCircuit(1)
-qc.h(0)
-hgate=qc.data[0][0]
-oneQubitDecomppser(hgate).draw(output="mpl")
+#qc=QuantumCircuit(1)
+#qc.h(0)
+#hgate=qc.data[0][0]
+#oneQubitDecomppser(hgate).draw(output="mpl")
 
 
-# In[48]:
+# In[3]:
 
 
 def twoQubitDecomppser(Gate):
@@ -58,13 +59,13 @@ def twoQubitDecomppser(Gate):
 
 #testing
 
-qc=QuantumCircuit(2)
-qc.cx(0,1)
-cxgate=qc.data[0][0]
-twoQubitDecomppser(cxgate).draw(output="mpl")
+#qc=QuantumCircuit(2)
+#qc.cx(0,1)
+#cxgate=qc.data[0][0]
+#twoQubitDecomppser(cxgate).draw(output="mpl")
 
 
-# In[49]:
+# In[4]:
 
 
 def compiler(circuit):
@@ -72,7 +73,8 @@ def compiler(circuit):
     Translates one quantum circuit into another, using a restricted set of gates {Rx,Rz,cz}.
     
     Parameters:
-    circuit (QuantumCircuit): qiskit QuantumCircuit object which contains the gates.
+    circuit (QuantumCircuit): qiskit QuantumCirc
+    uit object which contains the gates.
     
     Returns:
     QuantumCircuit: An equivalent quantum circuit which contains {Rx,Rz,cz} decomposition.
@@ -121,19 +123,21 @@ def compiler(circuit):
     return decomposedCircuit
 
 #testing
-qc=QuantumCircuit(5)
-qc.cx(0,1)
-qc.h(2)
-qc.cz(3,4)
-qc.cz(3,4)
-qc.cz(3,4)
-qc.cz(3,4)
-print(qc)
-newCircuit=compiler(qc)
-newCircuit.draw(output="mpl")
+#qc=QuantumCircuit(5)
+#qc.cx(0,1)
+#qc.h(2)
+#qc.rz(3.14,2)
+#qc.h(2)
+#qc.cz(3,4)
+#qc.cz(3,4)
+#qc.cz(3,4)
+#qc.cz(3,4)
+#print(qc)
+#newCircuit=compiler(qc)
+#newCircuit.draw(output="mpl")
 
 
-# In[50]:
+# In[5]:
 
 
 #overhead
@@ -142,12 +146,12 @@ newCircuit.draw(output="mpl")
 #3.doublicate cz gates (remove each other)
 
 
-# In[51]:
+# In[6]:
 
 
 def removeZeroRotations(circuit):
     """
-    Removes rotations with zero angles.
+    Removes rotations with zero or 2PI angles.
     
     Parameters:
     circuit (QuantumCircuit): circuit before simplification.
@@ -158,7 +162,8 @@ def removeZeroRotations(circuit):
     n=len(circuit.data)
     i=0
     while i<n:
-        if circuit.data[i][0].params==[0.0]:
+        angle=circuit.data[i][0].params
+        if angle==[0.0] or angle==[2*PI]:
             circuit.data.pop(i)
             i=i-1
             n=n-1
@@ -167,11 +172,11 @@ def removeZeroRotations(circuit):
 
 
 #testing
-newCircuit=removeZeroRotations(newCircuit)
-newCircuit.draw(output="mpl")
+#newCircuit=removeZeroRotations(newCircuit)
+#newCircuit.draw(output="mpl")
 
 
-# In[52]:
+# In[7]:
 
 
 def removeDoubleCZ(circuit):
@@ -183,37 +188,182 @@ def removeDoubleCZ(circuit):
     
     Returns:
     QuantumCircuit: A quantum circuit after simplification.
+    list: A list of stacks for wires, every stack contains the names of the gates that applied to that wire.
+          To help for simplification later.
     """
+    #initialize a stack for every wire to store the gates
     wires=[[""] for i in range(circuit.num_qubits)]
     n=len(circuit.data)
     i=0
     while i<n:
+        #finds the cz gates in the data list
         if circuit.data[i][0].name=="cz":
             qubit1=circuit.data[i][1][0].index
             qubit2=circuit.data[i][1][1].index
+            #check if there exist another cz gate before this at the same positions
             if wires[qubit1][-1][:2]=="cz" and wires[qubit2][-1][:2]=="cz":
+                #delete the two adjacent cz gates
                 circuit.data.pop(i)
                 circuit.data.pop(int(wires[qubit1][-1][2:]))
                 wires[qubit1].pop()
                 wires[qubit2].pop()
+                #redirect the index after deleting 2 nodes
                 i=i-2
                 n=n-2
             else:
+                #adding cz gate to the stacks concatenated with the index of the instruction 
+                #to use it for deleting if we found another cz gate at the same positions later
                 wires[qubit1].append("cz"+str(i))
                 wires[qubit2].append("cz"+str(i))
         else:
+            #adding any other gate to the stacks
             qubit=circuit.data[i][1][0].index
-            wires[qubit].append(circuit.data[i][0].name)
+            wires[qubit].append(circuit.data[i][0].name+str(i))
         i=i+1
+        #print(wires)
+    return circuit,wires
+
+#testing
+#newCircuit,wires=removeDoubleCZ(newCircuit) 
+#newCircuit.draw(output="mpl")
+
+
+# In[8]:
+
+
+def combineRotations(circuit,wires):
+    """
+    Combines the consecutive rotations about the same axis to optimize the circuit.
+    
+    Parameters:
+    circuit (QuantumCircuit): circuit before simplification.
+    wires (list): A list of stacks for wires, every stack contains the names of the gates that applied to that wire.
+    
+    Returns:
+    QuantumCircuit: A quantum circuit after simplification.
+    """
+    #initialize a list to store the indices that will be deleted after the loop to not affect the stored sequence of indices
+    indicesToPop=[]
+    for j in range(len(wires)):
+        i=0
+        n=len(wires[j])
+        while i<n-1:
+            #checking if there exists a consecutive rotation gate about the same axis
+            if wires[j][i][:2]==wires[j][i+1][:2]:
+                
+                #getting the instruction index that stored in the wires list 
+                index1=int(wires[j][i][2:])
+                index2=int(wires[j][i+1][2:])
+                
+                #getting the two angles of rotations to combine them
+                angle1=circuit.data[index1][0].params[0]
+                angle2=circuit.data[index2][0].params[0]
+                Sum=angle1+angle2
+                
+                #combining the two angles in one gate and delete the other gate
+                circuit.data[index2][0].params[0]=Sum
+                indicesToPop.append(index1)
+                
+                #update the wires list data and redirect the i index 
+                del wires[j][i]
+                n=n-1
+                i=i-1
+                
+                #checking if the combination of the angles equals 2PI (rotate and back to the same position)
+                if round(Sum,2)==round(2*PI,2):
+                    indicesToPop.append(index2)
+                    
+                    #delete the 2PI rotation and redirect the i index
+                    del wires[j][i+1]
+                    n=n-1
+                    i=i-2
+                
+            i=i+1
+            
+    #sorting the indices in descending order to pop the biggest index first
+    indicesToPop=sorted(indicesToPop, reverse=True)
+    #removing the elements
+    [circuit.data.pop(i) for i in indicesToPop]
+    
+    return circuit
+    
+#testing
+#newCircuit=combineRotations(newCircuit,wires)
+#newCircuit.draw(output="mpl")
+
+
+# In[9]:
+
+
+def simplify(circuit):
+    """
+    Simplifies the circuit by removing the overhead that appears after decomposition.
+    Overhead
+    1.rotations with zero angles
+    2.double rotation about the same axis (we can combine them)
+    3.doublicate cz gates (remove each other)
+    
+    Parameters:
+    circuit (QuantumCircuit): circuit before simplification.
+    
+    Returns:
+    QuantumCircuit: A quantum circuit after simplification.
+    """
+    circuit=removeZeroRotations(circuit)
+    circuit,wires=removeDoubleCZ(circuit)
+    circuit=combineRotations(circuit,wires)
     return circuit
 
 #testing
-newCircuit=removeDoubleCZ(newCircuit)
-newCircuit.draw(output="mpl")
+#newCircuit=simplify(newCircuit)
+#newCircuit.draw(output="mpl")
 
 
-# In[ ]:
+# # Using the Functions
+
+# ## Circuit Creation
+
+# In[10]:
 
 
+#create a quantum circuit
+c1=QuantumCircuit(5,5)
 
+#adding any gates
+c1.cx(0,1)
+c1.h(2)
+c1.rz(3.14,2)
+c1.h(2)
+c1.cz(3,4)
+c1.cz(3,4)
+c1.cz(3,4)
+c1.cz(3,4)
+
+c1.draw(output="mpl")
+
+
+# ## Circuit Decomposition
+
+# In[11]:
+
+
+#Decompose the circuit into Rz,Rx,cz basis
+c2=compiler(c1)
+c2.draw(output="mpl")
+
+
+# ## Circuit Simplification
+
+# In[12]:
+
+
+#Simplify the circuit by removing the overhead
+
+#The overhead
+#1.rotations with zero angles
+#2.double rotation about the same axis (we can combine them)
+#3.doublicate cz gates (remove each other)
+
+c3=simplify(c2)
+c3.draw(output="mpl")
 
